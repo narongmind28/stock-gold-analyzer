@@ -122,50 +122,59 @@ def analyze_news_impact(title, currency):
         )
 
 # --- ฟังก์ชันดึงข่าวกล่องแดงจาก Forex Factory ---
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=3600) # แคชไว้ 1 ชั่วโมงเพื่อไม่ให้โดนบล็อก
 def get_ff_red_news():
-    url = "https://faireconomy.media"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code == 200:
-            events = res.json()
-            red_events = []
-            tz_th = timezone(timedelta(hours=7))
-            now_th = datetime.now(tz_th)
-            today_str = now_th.strftime("%Y-%m-%d")
+    urls = [
+        "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+        "https://cdn-nfs.faireconomy.media/ff_calendar_thisweek.json"
+    ]
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+    }
+    for url in urls:
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                events = res.json()
+                red_events = []
+                tz_th = timezone(timedelta(hours=7))
+                now_th = datetime.now(tz_th)
+                today_str = now_th.strftime("%Y-%m-%d")
 
-            for ev in events:
-                if ev.get("impact") == "High":
-                    raw_date = ev.get("date", "")
-                    title = ev.get("title", "-")
-                    currency = ev.get("country", "-")
-                    try:
-                        dt = datetime.fromisoformat(raw_date).astimezone(tz_th)
-                        date_str = dt.strftime("%Y-%m-%d")
-                        time_str = dt.strftime("%H:%M น.")
-                        day_label = "🔥 วันนี้" if date_str == today_str else dt.strftime("%d/%m/%Y")
-                    except:
-                        date_str = raw_date[:10]
-                        time_str = "-"
-                        day_label = date_str
+                for ev in events:
+                    if ev.get("impact") == "High":
+                        raw_date = ev.get("date", "")
+                        title = ev.get("title", "-")
+                        currency = ev.get("country", "-")
+                        try:
+                            dt = datetime.fromisoformat(raw_date).astimezone(tz_th)
+                            date_str = dt.strftime("%Y-%m-%d")
+                            time_str = dt.strftime("%H:%M น.")
+                            day_label = "🔥 วันนี้" if date_str == today_str else dt.strftime("%d/%m/%Y")
+                        except:
+                            date_str = raw_date[:10]
+                            time_str = "-"
+                            day_label = date_str
 
-                    impact_desc, direction_guide, est_points = analyze_news_impact(title, currency)
+                        impact_desc, direction_guide, est_points = analyze_news_impact(title, currency)
 
-                    red_events.append({
-                        "สถานะวัน": day_label,
-                        "เวลา (ไทย)": time_str,
-                        "สกุลเงิน": currency,
-                        "หัวข้อข่าวกล่องแดง": title,
-                        "คาดการณ์": ev.get("forecast") or "-",
-                        "ครั้งก่อน": ev.get("previous") or "-",
-                        "คาดการณ์ทิศทางทองคำ": direction_guide,
-                        "ระยะวิ่งเฉลี่ย (ทองคำ)": est_points,
-                        "ความสำคัญ": impact_desc
-                    })
-            return pd.DataFrame(red_events)
-    except Exception:
-        pass
+                        red_events.append({
+                            "สถานะวัน": day_label,
+                            "เวลา (ไทย)": time_str,
+                            "สกุลเงิน": currency,
+                            "หัวข้อข่าวกล่องแดง": title,
+                            "คาดการณ์": ev.get("forecast") or "-",
+                            "ครั้งก่อน": ev.get("previous") or "-",
+                            "คาดการณ์ทิศทางทองคำ": direction_guide,
+                            "ระยะวิ่งเฉลี่ย (ทองคำ)": est_points,
+                            "ความสำคัญ": impact_desc
+                        })
+                if red_events:
+                    return pd.DataFrame(red_events)
+        except Exception:
+            continue
     return pd.DataFrame()
 
 # --- ส่วนแสดงวิเคราะห์เทรดชนข่าว (ด้านบนสุด) ---
@@ -232,7 +241,7 @@ def run_backtest(df, rr):
         row = df.iloc[i]
         prev_row = df.iloc[i-1]
         
-        if np.isnan(row['ATR']):
+        if pd.isna(prev_row['ATR']) or prev_row['ATR'] == 0:
             continue
 
         if in_trade:
